@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS VPC portfolio project with two public subnets, one private subnet,
+  an internet gateway, a NAT gateway, and public and private route tables.
+
+Mappings:
+  CidrMap:
+    Vpc:
+      Cidr: 16.0.0.0/16
+    Public1:
+      Cidr: 16.0.1.0/24
+    Public2:
+      Cidr: 16.0.3.0/24
+    Private1:
+      Cidr: 16.0.2.0/24
+
+Resources:
+  Virginia:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [CidrMap, Vpc, Cidr]
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+
+  ForPubInstanceIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-igw'
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Virginia
+      InternetGatewayId: !Ref ForPubInstanceIGW
+
+  PublicSub1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Virginia
+      CidrBlock: !FindInMap [CidrMap, Public1, Cidr]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-1'
+
+  PublicSub2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Virginia
+      CidrBlock: !FindInMap [CidrMap, Public2, Cidr]
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-2'
+
+  PrivateSub1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Virginia
+      CidrBlock: !FindInMap [CidrMap, Private1, Cidr]
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-1'
+
+  VirginiaRTB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Virginia
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-rt'
+
+  VirginiaRTBDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref VirginiaRTB
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ForPubInstanceIGW
+
+  Public1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSub1
+      RouteTableId: !Ref VirginiaRTB
+
+  PublicSub2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSub2
+      RouteTableId: !Ref VirginiaRTB
+
+  PrivateSubRTB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Virginia
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-rt'
+
+  Private1RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSub1
+      RouteTableId: !Ref PrivateSubRTB
+
+  NatEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: IGWAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-nat-eip'
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: VirginiaRTBDefaultRoute
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref PublicSub1
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-nat'
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubRTB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref Virginia
+
+  Public1Id:
+    Description: First public subnet ID
+    Value: !Ref PublicSub1
+
+  Public2Id:
+    Description: Second public subnet ID
+    Value: !Ref PublicSub2
+
+  Private1Id:
+    Description: Private subnet ID
+    Value: !Ref PrivateSub1
+
+  VirginiaRTBId:
+    Description: Public route table ID
+    Value: !Ref VirginiaRTB
+
+  PrivateRTBId:
+    Description: Private route table ID
+    Value: !Ref PrivateSubRTB
+
+  InternetGatewayId:
+    Description: Internet gateway ID
+    Value: !Ref ForPubInstanceIGW
+
+  NatGatewayId:
+    Description: NAT gateway ID
+    Value: !Ref NatGateway
+
+  NatElasticIp:
+    Description: NAT gateway public IPv4 address
+    Value: !Ref NatEIP
