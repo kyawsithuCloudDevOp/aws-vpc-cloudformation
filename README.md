@@ -1,70 +1,63 @@
-# AWS VPC Infrastructure with CloudFormation
+# AWS VPC and EC2 Infrastructure with CloudFormation
 
-A hands-on networking project using AWS CloudFormation to define public
-and private subnets, routing and outbound internet access.
+This project defines an AWS network and three EC2 instances using
+CloudFormation. It demonstrates public and private subnet routing,
+bastion access and automated web server setup.
 
-## Resources
+## Templates
 
-- One VPC
-- Two public subnets in different Availability Zones
-- One private subnet
-- Internet gateway
-- Public and private route tables
-- NAT gateway with an Elastic IP
+### vpc.yaml
+Creates:
+- A VPC with two public subnets and one private subnet.
+- An internet gateway for public-subnet internet connectivity.
+- A NAT gateway for outbound connections from the private subnet.
+- Public and private route tables with subnet associations.
+
+### instances.yaml
+Creates:
+- A bastion host in a public subnet.
+- A Linux web server in the private subnet.
+- A Windows Server instance in the private subnet.
+- Security groups controlling access to the instances.
 
 ## How it works
 
-The public subnets use a default route to the internet gateway.
-The private subnet uses a default route to the NAT gateway, allowing
-outbound internet connections without assigning instances public IPs.
+The bastion host provides an entry point for accessing private servers.
+The Windows security group permits RDP traffic from the bastion
+security group.
 
-## Deployment
+When the Linux web server starts, its UserData script installs nginx
+and curl, downloads an index.html file from GitHub and starts nginx.
+The private subnet needs working NAT connectivity for these downloads.
 
-Requires an AWS account, configured AWS CLI and permissions to create
-the resources.
+The web server has no public IP address. Access requires a connection
+through the bastion, such as an SSH tunnel. This version does not
+include an Application Load Balancer.
 
-Validate the template:
+## Deployment order
 
-```bash
-aws cloudformation validate-template \
-  --template-body file://vpc.yaml \
-  --region eu-north-1
-```
+1. Deploy vpc.yaml and wait for the stack to complete.
+2. Update the mappings in instances.yaml with the resulting VPC and
+   subnet IDs.
+3. Check that the AMIs and EC2 key pair exist in the selected region.
+   The Linux AMI must support the apt-get commands used by UserData.
+4. Deploy instances.yaml.
 
-Deploy:
+## Current limitations
 
-```bash
-aws cloudformation deploy \
-  --template-file vpc.yaml \
-  --stack-name portfolio-vpc \
-  --region eu-north-1
-```
+The instance template contains account-specific resource mappings.
+These must be updated before deploying in another AWS account.
 
-## Verification
+The security groups currently include unrestricted bastion SSH and
+broad web-server access rules. Restrict these before deployment.
 
-After deployment:
-- Check that the stack reaches CREATE_COMPLETE.
-- Inspect the VPC resource map and subnet associations.
-- Confirm public routes point to the internet gateway.
-- Confirm the private default route points to the NAT gateway.
+## Skills demonstrated
 
-This template creates networking resources only; it does not create
-EC2 instances for connectivity testing.
-
-## Design limitations
-
-This learning project uses one NAT gateway and one private subnet.
-It does not provide resilient private-subnet internet access across
-multiple Availability Zones.
+AWS networking, CloudFormation, EC2, Linux administration, security
+groups and automated instance configuration.
 
 ## Cleanup
 
-The NAT gateway and public IPv4 address incur charges while provisioned.
-Delete the stack after testing:
-
-```bash
-aws cloudformation delete-stack \
-  --stack-name portfolio-vpc \
-  --region eu-north-1
-```# aws-vpc-cloudformation
-AWS VPC infrastructure with public and private subnets, internet gateway and NAT gateway, built using CloudFormation.
+Delete the instances stack before deleting the VPC stack.
+EC2 instances, NAT gateways, storage and public IPv4 addresses can
+incur charges while provisioned.
